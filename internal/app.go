@@ -2,6 +2,7 @@ package internal
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -74,7 +75,9 @@ func removeAd() {
 		childHandles = append(childHandles, handle)
 		return 1
 	})
-	for {
+
+	loopCount := 0
+	for loopCount < 3 {
 		mutex.Lock()
 		for _, wnd := range handles {
 			if wnd == 0 {
@@ -97,7 +100,9 @@ func removeAd() {
 		HidePopupAd()
 		mutex.Unlock()
 		time.Sleep(sleepTime)
+		loopCount++
 	}
+	os.Exit(0)
 }
 
 func Run() {
