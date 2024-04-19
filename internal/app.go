@@ -77,7 +77,7 @@ func removeAd() {
 	})
 
 	loopCount := 0
-	for loopCount < 3 {
+	for loopCount < 100 {
 		mutex.Lock()
 		for _, wnd := range handles {
 			if wnd == 0 {
