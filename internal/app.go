@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"kakaotalkadblock/internal/win/winapi"
+	"os"
 	"strings"
 	"sync"
 	"syscall"
@@ -106,58 +107,62 @@ func removeAd(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			mutex.Lock()
-			for wnd := range mainWindowHandleMap {
-				if wnd == 0 {
-					continue
-				}
-				childHandles = childHandles[:0]
-				var handle windows.HWND
-				enumWindow, ok := enumWindowCallbackMap[wnd]
-				if !ok {
-					enumWindow = syscall.NewCallback(func(handle windows.HWND, _ uintptr) uintptr {
-						childHandles = append(childHandles, handle)
-						return 1
-					})
-					enumWindowCallbackMap[wnd] = enumWindow
-				}
-				winapi.EnumChildWindows(wnd, enumWindow, uintptr(unsafe.Pointer(&handle)))
-
-				if !isMainWindow(childHandles) {
-					continue
-				}
-
-				rect := new(winapi.Rect)
-				winapi.GetWindowRect(wnd, rect)
-				for _, childHandle := range childHandles[1:] {
-					className := getWindowClass(childHandle)
-					windowText := getWindowText(childHandle)
-					parentHandle := winapi.GetParent(childHandle)
-					if parentHandle != wnd {
+			for loopCount := 0; loopCount < 100; loopCount++ {
+				mutex.Lock()
+				for wnd := range mainWindowHandleMap {
+					if wnd == 0 {
 						continue
 					}
-					parentText := getWindowText(parentHandle)
-
-					if className == "EVA_ChildWindow" && windowText == "" && parentText != "" {
-						hasCustomScroll, ok := customScrollHandleMap[wnd]
-						if !ok {
-							hasCustomScroll = classNameStartsWith(childHandle, "_EVA_")
-							customScrollHandleMap[wnd] = hasCustomScroll
-						}
-						if !hasCustomScroll {
-							winapi.SendMessage(childHandle, winapi.WmClose, 0, 0)
-						}
+					childHandles = childHandles[:0]
+					var handle windows.HWND
+					enumWindow, ok := enumWindowCallbackMap[wnd]
+					if !ok {
+						enumWindow = syscall.NewCallback(func(handle windows.HWND, _ uintptr) uintptr {
+							childHandles = append(childHandles, handle)
+							return 1
+						})
+						enumWindowCallbackMap[wnd] = enumWindow
 					}
-					HideMainViewAdArea(windowText, rect, childHandle)
-					HideLockScreenAdArea(windowText, rect, childHandle)
+					winapi.EnumChildWindows(wnd, enumWindow, uintptr(unsafe.Pointer(&handle)))
+
+					if !isMainWindow(childHandles) {
+						continue
+					}
+
+					rect := new(winapi.Rect)
+					winapi.GetWindowRect(wnd, rect)
+					for _, childHandle := range childHandles[1:] {
+						className := getWindowClass(childHandle)
+						windowText := getWindowText(childHandle)
+						parentHandle := winapi.GetParent(childHandle)
+						if parentHandle != wnd {
+							continue
+						}
+						parentText := getWindowText(parentHandle)
+
+						if className == "EVA_ChildWindow" && windowText == "" && parentText != "" {
+							hasCustomScroll, ok := customScrollHandleMap[wnd]
+							if !ok {
+								hasCustomScroll = classNameStartsWith(childHandle, "_EVA_")
+								customScrollHandleMap[wnd] = hasCustomScroll
+							}
+							if !hasCustomScroll {
+								winapi.SendMessage(childHandle, winapi.WmClose, 0, 0)
+							}
+						}
+						HideMainViewAdArea(windowText, rect, childHandle)
+						HideLockScreenAdArea(windowText, rect, childHandle)
+					}
 				}
-			}
-			for wnd := range adSubwindowCandidateMap {
-				if hasChromeLegacyWindow(wnd) {
-					winapi.ShowWindow(wnd, 0)
+				for wnd := range adSubwindowCandidateMap {
+					if hasChromeLegacyWindow(wnd) {
+						winapi.ShowWindow(wnd, 0)
+					}
 				}
+				time.Sleep(sleepTime)
+				mutex.Unlock()
 			}
-			mutex.Unlock()
+			os.Exit(0) // 즉시 종료, 이후 코드는 실행되지 않음
 		}
 	}
 }
